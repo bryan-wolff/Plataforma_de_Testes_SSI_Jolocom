@@ -8,7 +8,6 @@ app.use(bodyParser.urlencoded({ extended: true }))
 import fetch from 'node-fetch'
 const URL_BASE = `http://wolff.gleeze.com:${porta}` //`http://issuer-jolocom.gidlab.rnp.br:${porta}`
 
-
 /* ............... DEPENDENCIAS JOLOCOM ............... */
 
 import { JolocomSDK, NaivePasswordStore, JolocomLib } from '@jolocom/sdk'
@@ -144,6 +143,9 @@ app.post('/authenticate', async function (req, res, next) {
         if (!signatureValidationResults.includes(false)) {
             console.log("SUCESSO! a credencial fornecida pelo client é válida!")
             cache[interaction.payload.jti].authenticated = true
+            cache[interaction.payload.jti].expiryTime = Date.now() + 30000
+            cache[interaction.payload.jti].claim = providedCredentials[0].claim
+            //cache[interaction.payload.jti].claims = providedCredentials
             res.send("SUCESSO! a credencial fornecida é válida!")
             //res.send(!signatureValidationResults.includes(false))
         }
@@ -315,8 +317,6 @@ app.post('/receive/StudentCredentialUNICAMP', async function (req, res, next) {
 
 const cache = {}
 
-
-
 app.get('/', async (req, res) => {
   try {
     const ip = req.ip == "::1" ? "127.0.0.1":req.ip.split(':')[3] || req.connection.remoteAddress.split(':')[3]
@@ -342,12 +342,9 @@ app.get('/', async (req, res) => {
         const token = response.token
         const identifier = response.identifier
     
-        cache[identifier] = {ip: ip, authenticated: false, token: token}
+        cache[identifier] = {ip: ip, authenticated: false, token: token, expiryToken: Date.now() + 120000}
         res.redirect("/" + identifier) 
-
     }
-
-
 
   } catch (error) {
     res.send(error)
@@ -377,7 +374,7 @@ app.get('/:id', (req, res) => {
         } else { //***** qnd não é o mesmo ip mas ja foi autenticado, ele reconstroi um qrcode invalido pois ja foi processado
           //fazer autenticação e direcionar o usuário para /:id 
           const newURL = `${URL_BASE}/${req.params.id}`
-          res.send(`<!doctype html><head><style>* {text-align:center;}body { padding:20px;}.qr-btn { background-color:#8c52ff; padding:8px; color:white; cursor:pointer;}.token {margin-left: 30%;margin-right: 30%;word-break: break-all; overflow: scroll;}</style><title>SSI Authenticator</title></head><body><h3>Please scan the QR code with your Jolocom SmartWallet</h3> <br/><textarea id="token" rows="4" cols="50">${cache[req.params.id].token}</textarea><br/><br/> <canvas id="qr-code"></canvas> <br/><br/><br/><div> <button class="qr-btn" onclick=window.location="${newURL}">Continue</button> </div> <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script><script>/* JS comes here */var qr;(function() { qr = new QRious({ element: document.getElementById('qr-code'), size: 400, value: '${cache[req.params.id].token}' }); })();</script> </body></html>`) 
+          res.send(`<!doctype html><head><style>* {text-align:center;}body { padding:20px;}.qr-btn { background-color:#8c52ff; padding:8px; color:white; cursor:pointer;}.token {margin-left: 30%;margin-right: 30%;word-break: break-all; overflow: scroll;}</style><title>SSI Authenticator</title></head><body><h3>Please scan the QR code with your Jolocom SmartWallet to provide your e-mail credential</h3> <br/><textarea id="token" rows="4" cols="50">${cache[req.params.id].token}</textarea><br/><br/> <canvas id="qr-code"></canvas> <br/><br/><br/><div> <button class="qr-btn" onclick=window.location="${newURL}">Continue</button> </div> <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script><script>/* JS comes here */var qr;(function() { qr = new QRious({ element: document.getElementById('qr-code'), size: 400, value: '${cache[req.params.id].token}' }); })();</script> </body></html>`) 
           
         }
 
@@ -387,6 +384,24 @@ app.get('/:id', (req, res) => {
     res.send(error)
   }
 })
+
+//a cada 20 segundos verifica expiryTime de algum usuário, e se expirou, o usuário é removido do cache e necessitará fazer um novo login 
+//também é verificado se o usuário demorou 2min para se autenticar, neste caso, o usuário é removido do cache e necessitará fazer mais uma tentativa de login 
+
+setInterval(e => {
+    Object.keys(cache).forEach(key => {
+        if (cache[key].expiryTime < Date.now() & cache[key].authenticated == true) {
+            console.log(`\nAutenticação do usuário ${key} expirado\n`)
+            delete cache[key]
+        }
+
+        if (cache[key].expiryToken < Date.now() & cache[key].authenticated == false) {
+            console.log(`\nToken de autenticação do usuário ${key} expirado\n`)
+            delete cache[key]
+        }
+        //console.log(cache)
+    })
+},20000)
 
 
 
