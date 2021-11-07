@@ -54,7 +54,7 @@ console.log(`Agente carregado (Cliente): ${client.identityWallet.did} \n`)
 
 await client.storage.delete.verifiableCredential('claimId:dd6221c27ab8e288')
 
-async function acessarAPI(URL = 'http://issuer-jolocom.gidlab.rnp.br/api/credentialRequests') {
+async function acessarAPI(URL = 'http://issuer-jolocom.gidlab.rnp.br/authenticate') {
 
     console.log("\nIniciando Fluxo de VERIFICAÇÃO de CV...\n")
 
@@ -65,6 +65,8 @@ async function acessarAPI(URL = 'http://issuer-jolocom.gidlab.rnp.br/api/credent
         .then(res => res.text())
         .catch(err => console.log(err))
         
+        solicitacao = JSON.parse(solicitacao)
+
         console.log("SP solicitou credenciais!\n")
     }
     catch (error) {
@@ -73,8 +75,8 @@ async function acessarAPI(URL = 'http://issuer-jolocom.gidlab.rnp.br/api/credent
     }
 
     try {
-
-        const clientInteraction = await client.processJWT(solicitacao)
+        console.log(solicitacao.token)
+        const clientInteraction = await client.processJWT(solicitacao.token)
         
         console.log("Tipo(s) de CV(s) requisitada(as): \n")
 
@@ -117,7 +119,7 @@ async function acessarAPI(URL = 'http://issuer-jolocom.gidlab.rnp.br/api/credent
 
 /* ............... Fluxo de Emissão ............... */
 
-async function emitirCVs(URL = 'http://issuer-jolocom.gidlab.rnp.br/api/credentialIssuance') {
+async function emitirCVs(URL = 'http://issuer-jolocom.gidlab.rnp.br/receive/ProofOfEmailCredential') {
 
     console.log("\nIniciando Fluxo de EMISSÃO de CV...\n")
     
@@ -128,6 +130,8 @@ async function emitirCVs(URL = 'http://issuer-jolocom.gidlab.rnp.br/api/credenti
             .catch(err => console.log(err))
             console.log("Emissor respondeu com uma oferta contendo os tipos de credenciais que pode emitir!\n")
         
+        oferta = JSON.parse(oferta)
+    
     } catch (error) {
         console.log("ERRO: Houve algum erro ao acessar a API")
         console.log("ERRO: ", error)
@@ -135,7 +139,7 @@ async function emitirCVs(URL = 'http://issuer-jolocom.gidlab.rnp.br/api/credenti
     
     try {
     
-        const clientInteraction = await client.processJWT(oferta)
+        const clientInteraction = await client.processJWT(oferta.token)
     
         console.log("Tipo(s) de CV(s) que pode(m) ser emitida(s): \n")
 
@@ -176,6 +180,7 @@ async function emitirCVs(URL = 'http://issuer-jolocom.gidlab.rnp.br/api/credenti
             headers: { 'Content-Type': 'application/json' }
         }).then(res => res.text())
           .catch(err => console.log(err))
+
     
     } catch (error) {
         console.log("ERRO: Houve algum erro na criação/transmissão da resposta...")

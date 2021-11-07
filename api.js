@@ -1,11 +1,12 @@
 /* ............... Configuração do Servidor ............... */
 
-const porta = 80
+const porta = 7777
 import express from "express";
 const app = express()
 import bodyParser from 'body-parser';
 app.use(bodyParser.urlencoded({ extended: true }))
 import fetch from 'node-fetch'
+const URL_BASE = `http://wolff.gleeze.com:${porta}` //`http://issuer-jolocom.gidlab.rnp.br:${porta}`
 
 
 /* ............... DEPENDENCIAS JOLOCOM ............... */
@@ -55,15 +56,15 @@ console.log(`Agente Criado/Carregado (API): ${API.identityWallet.did}`)
 
 /* ............... Metadados de credenciais ............... */
 
-const credUnicampMetadata = {
-    type: ['Credential', 'credencialUNICAMP'],
-    name: 'Credential UNICAMP',
+const StudentCredentialUNICAMPMetadata = {
+    type: ['Credential', 'StudentCredentialUNICAMP'],
+    name: 'Student Credential UNICAMP',
     context: [
         {
-        credencialUNICAMP: 'https://example.com/terms/credencialUNICAMP',
+        StudentCredentialUNICAMP: 'https://example.com/terms/StudentCredentialUNICAMP',
         schema: 'https://schema.org/',
         cpf: 'schema:cpf',
-        nomeCompleto: 'schema:name',
+        fullName: 'schema:Fullname',
         RA: 'schema:RA',
         email: 'schema:email',
         familyName: 'schema:familyName',
@@ -74,7 +75,6 @@ const credUnicampMetadata = {
 }
 
 import { claimsMetadata } from '@jolocom/protocol-ts'
-
 
 /* ............... Configurando as requisições HTTP ............... */
 
@@ -104,13 +104,13 @@ app.use(function(req, res, next){
 
 // ----------> Fluxo de VERIFICAÇÃO de credencial
 
-//get em /api/credentialRequests gerará uma solicitaçao de credencial
-app.get('/api/credentialRequests', async function (req, res, next) {
+//get em /authenticate gerará uma solicitaçao de credencial do tipo 'ProofOfEmailCredential'
+app.get('/authenticate', async function (req, res, next) {
     console.log("\nAPI: Requisição GET")
 
     try {
         const credentialRequest = await API.credRequestToken({
-            callbackURL: 'http://issuer-jolocom.gidlab.rnp.br/api/credentialRequests',
+            callbackURL: `${URL_BASE}/authenticate`,
             credentialRequirements: [
               {
                 type: ['Credential','ProofOfEmailCredential'],
@@ -119,7 +119,7 @@ app.get('/api/credentialRequests', async function (req, res, next) {
             ],
         })
         const enc = credentialRequest.encode()
-        res.send(enc)
+        res.send({token:enc, identifier: credentialRequest.payload.jti})
 
         console.log("SUCESSO! Solicitação de credencial criada e enviada")
     
@@ -130,19 +130,20 @@ app.get('/api/credentialRequests', async function (req, res, next) {
     }
 })
 
-//post em /api/credentialRequests (em body) deve conter a resposta da solicitaçao do cliente através da key 'response'    
-app.post('/api/credentialRequests', async function (req, res, next) {
+//post em /authenticate deve conter a resposta da solicitaçao do cliente através da key 'token'    
+app.post('/authenticate', async function (req, res, next) {
     console.log("\nAPI: Requisição POST")
     const token = JSON.parse(req.rawBody).token
 
     //const response = JSON.parse(Object.keys(req.body)[0]).response
     try {
         //const APIInteraction = await API.processJWT(req.body.response)
-
-        const providedCredentials = await JolocomLib.parse.interactionToken.fromJWT(token).interactionToken.suppliedCredentials
+        const interaction =  await JolocomLib.parse.interactionToken.fromJWT(token)
+        const providedCredentials = interaction.interactionToken.suppliedCredentials
         const signatureValidationResults = await JolocomLib.util.validateDigestables(providedCredentials)
         if (!signatureValidationResults.includes(false)) {
             console.log("SUCESSO! a credencial fornecida pelo client é válida!")
+            cache[interaction.payload.jti].authenticated = true
             res.send("SUCESSO! a credencial fornecida é válida!")
             //res.send(!signatureValidationResults.includes(false))
         }
@@ -159,15 +160,15 @@ app.post('/api/credentialRequests', async function (req, res, next) {
 
 })
 
-// ----------> Fluxo de EMISSÃO de credencial
+// ----------> Fluxo de EMISSÃO de credencial ProofOfEmailCredential
 
-//get em /api/credentialIssuance gerará uma oferta de credencial do tipo ProofOfEmailCredential
-app.get('/api/credentialIssuance', async function (req, res, next) {
+//get em /receive/ProofOfEmailCredential gerará uma oferta de credencial do tipo ProofOfEmailCredential
+app.get('/receive/ProofOfEmailCredential', async function (req, res, next) {
     console.log("\nAPI: Requisição GET")
 
     try {
         const credentialOffer  = await API.credOfferToken({
-            callbackURL: 'http://issuer-jolocom.gidlab.rnp.br/api/credentialIssuance',
+            callbackURL: `${URL_BASE}/receive/ProofOfEmailCredential`,
             offeredCredentials: [
               {
                 type: 'ProofOfEmailCredential',
@@ -175,7 +176,7 @@ app.get('/api/credentialIssuance', async function (req, res, next) {
             ],
         })
         const enc = credentialOffer.encode()
-        res.send(enc)
+        res.send({token:enc, identifier:credentialOffer.payload.jti})
         console.log("SUCESSO! Oferta de credencial criada e enviada")
 
     } catch (error) {
@@ -185,8 +186,8 @@ app.get('/api/credentialIssuance', async function (req, res, next) {
     }
 })
 
-//post em /api/credentialIssuance (em body) deve conter a resposta da oferta do cliente através da key 'response'    
-app.post('/api/credentialIssuance', async function (req, res, next) {
+//post em /receive/ProofOfEmailCredential deve conter a resposta da oferta do cliente através da key 'token'    
+app.post('/receive/ProofOfEmailCredential', async function (req, res, next) {
     console.log("\nAPI: Requisição POST")
 
     const token = JSON.parse(req.rawBody).token
@@ -219,7 +220,12 @@ app.post('/api/credentialIssuance', async function (req, res, next) {
 
         const enc = APIIssuance.encode()
 
-        console.log(enc)
+        console.log(`
+        token gerado:
+        
+        ${enc}
+
+        `)
 
 	    console.log("SUCESSO! Credencial gerada e enviada!!!")
         res.send(enc)
@@ -231,11 +237,164 @@ app.post('/api/credentialIssuance', async function (req, res, next) {
 })
 
 
+
+// ----------> Fluxo de EMISSÃO de credencial StudentCredentialUNICAMP
+
+/*
+//get em /receive/StudentCredentialUNICAMP gerará uma oferta de credencial do tipo StudentCredentialUNICAMP
+app.get('/receive/StudentCredentialUNICAMP', async function (req, res, next) {
+    console.log("\nAPI: Requisição GET")
+
+    try {
+        const credentialOffer  = await API.credOfferToken({
+            callbackURL: `${URL_BASE}/receive/StudentCredentialUNICAMP`,
+            offeredCredentials: [
+              {
+                type: 'StudentCredentialUNICAMP',
+              },
+            ],
+        })
+        const enc = credentialOffer.encode()
+        res.send({token:enc, identifier:credentialOffer.payload.jti})
+        console.log("SUCESSO! Oferta de credencial criada e enviada")
+
+    } catch (error) {
+        console.log("ERRO na geração da oferta de credencial")
+        console.log(error)
+        res.send("ERRO na geração da oferta de credencial")
+    }
+})
+
+//post em /receive/StudentCredentialUNICAMP deve conter a resposta da oferta do cliente através da key 'token'    
+app.post('/receive/StudentCredentialUNICAMP', async function (req, res, next) {
+    console.log("\nAPI: Requisição POST")
+
+    const token = JSON.parse(req.rawBody).token
+
+    try {
+        const APIInteraction = await API.processJWT(token)
+
+        const credentialUNICAMP = await API.identityWallet.create.signedCredential({
+            metadata: StudentCredentialUNICAMPMetadata,
+            subject: APIInteraction.messages[1].payload.iss.split('#')[0],
+            claim: {
+                cpf: '123.456.789-12',
+                fullName: 'Lorem Ipsum',
+                RA: '123456',
+                email: 'l000000@dac.unicamp.br',
+                familyName: 'Ipsum',
+                givenName: 'Lorem',
+                birthDate: '01/01/2001',
+            },
+        }, passwordAPI)
+
+        const APIIssuance = await APIInteraction.createCredentialReceiveToken([
+            credentialUNICAMP,
+        ])
+
+        const enc = APIIssuance.encode()
+
+        console.log(`
+        token gerado:
+        
+        ${enc}
+
+        `)
+
+	    console.log("SUCESSO! Credencial gerada e enviada!!!")
+        res.send(enc)
+        
+    } catch (error) {
+        console.log("ERRO: ", error)
+        res.send("ERRO: Forneça uma resposta de oferta de credencial assinada e válida pelos padrões jolocom!")
+    }
+})
+*/
+
+// ----------> Fluxo de Auntenticação
+
+const cache = {}
+
+
+
+app.get('/', async (req, res) => {
+  try {
+    const ip = req.ip == "::1" ? "127.0.0.1":req.ip.split(':')[3] || req.connection.remoteAddress.split(':')[3]
+
+    let alreadyAuthenticated = false
+    let IDalreadyAuthenticated = "null"
+
+    Object.keys(cache).forEach(key => {
+        if (cache[key].ip == ip && cache[key].authenticated == true) {
+            alreadyAuthenticated = true
+            IDalreadyAuthenticated = key
+        }
+    })
+
+    if (alreadyAuthenticated == true) {
+        res.redirect("/" + IDalreadyAuthenticated) 
+        alreadyAuthenticated = false
+        IDalreadyAuthenticated = "null"
+    } else {
+
+        const response = await fetch(`${URL_BASE}/authenticate`).then(res => res.text()).then(res => JSON.parse(res))
+
+        const token = response.token
+        const identifier = response.identifier
+    
+        cache[identifier] = {ip: ip, authenticated: false, token: token}
+        res.redirect("/" + identifier) 
+
+    }
+
+
+
+  } catch (error) {
+    res.send(error)
+  }
+})
+
+app.get('/:id', (req, res) => {
+  
+  try {
+    const ip = req.ip == "::1" ? "127.0.0.1":req.ip.split(':')[3] || req.connection.remoteAddress.split(':')[3]
+    
+    if (cache[req.params.id] == undefined) {
+      res.redirect('/')
+    } else {
+
+        if (cache[req.params.id].authenticated === true) {
+
+            if (cache[req.params.id].ip === ip) {
+                //res.sendFile('index.html', {root: __dirname })
+                res.send('Usuário Autenticado!')
+                
+            } else {
+                res.redirect("/")
+            }
+          
+    
+        } else { //***** qnd não é o mesmo ip mas ja foi autenticado, ele reconstroi um qrcode invalido pois ja foi processado
+          //fazer autenticação e direcionar o usuário para /:id 
+          const newURL = `${URL_BASE}/${req.params.id}`
+          res.send(`<!doctype html><head><style>* {text-align:center;}body { padding:20px;}.qr-btn { background-color:#8c52ff; padding:8px; color:white; cursor:pointer;}.token {margin-left: 30%;margin-right: 30%;word-break: break-all; overflow: scroll;}</style><title>SSI Authenticator</title></head><body><h3>Please scan the QR code with your Jolocom SmartWallet</h3> <br/><textarea id="token" rows="4" cols="50">${cache[req.params.id].token}</textarea><br/><br/> <canvas id="qr-code"></canvas> <br/><br/><br/><div> <button class="qr-btn" onclick=window.location="${newURL}">Continue</button> </div> <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script><script>/* JS comes here */var qr;(function() { qr = new QRious({ element: document.getElementById('qr-code'), size: 400, value: '${cache[req.params.id].token}' }); })();</script> </body></html>`) 
+          
+        }
+
+    }
+
+  } catch (error) {
+    res.send(error)
+  }
+})
+
+
+
 /* ............... Iniciando Servidor ............... */
 
 console.log("\nIniciando Servidor...")
 
 app.listen(porta, () => {
-    console.log(`Servidor está executando na porta ${porta}.`)
+    console.log(`Servidor está executando em ${URL_BASE}`)
     console.log()
 })
