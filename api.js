@@ -390,16 +390,24 @@ app.get('/:id', (req, res) => {
 
 setInterval(e => {
     Object.keys(cache).forEach(key => {
+
+        const deletar = false
+
         if (cache[key].expiryTime < Date.now() & cache[key].authenticated == true) {
             console.log(`\nAutenticação do usuário ${key} expirado\n`)
-            delete cache[key]
+            deletar = true
         }
 
         if (cache[key].expiryToken < Date.now() & cache[key].authenticated == false) {
             console.log(`\nToken de autenticação do usuário ${key} expirado\n`)
-            delete cache[key]
+            deletar = true
         }
-        //console.log(cache)
+
+        if (deletar) {
+            delete cache[key]
+            deletar = false
+        }
+        console.log("\n", cache)
     })
 },20000)
 
