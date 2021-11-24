@@ -5,11 +5,10 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "test": "nodemon api.js",
-    "start": "node api.js",
-    "client":"node client.js",
-    "api":"nodemon api.js",
-    "man-in-the-middle":"nodemon serverManInTheMiddle.js"
+    "test": "nodemon ./src/index.js",
+    "start": "node ./src/index.js",
+    "client":"node ./src/client.js",
+    "man-in-the-middle":"nodemon ./src/serverManInTheMiddle.js"
   },
   "author": "",
   "license": "ISC",

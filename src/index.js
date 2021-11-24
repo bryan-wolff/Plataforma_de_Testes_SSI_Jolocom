@@ -1,27 +1,30 @@
-/* ............... Configuração do Servidor ............... */
+/* ............... DEPENDENCIAS do Servidor ............... */
 
-const porta = 7777
+import {porta, URL_BASE} from "../config.js"
 import express from "express";
 const app = express()
 import bodyParser from 'body-parser';
 app.use(bodyParser.urlencoded({ extended: true }))
 import fetch from 'node-fetch'
-const URL_BASE = `http://wolff.gleeze.com:${porta}` //`http://issuer-jolocom.gidlab.rnp.br:${porta}`
+import * as http from 'http'
+const server = http.createServer(app)
+import { WebSocketServer, WebSocket } from 'ws'
+import path from 'path'
+
 
 /* ............... DEPENDENCIAS JOLOCOM ............... */
 
 import { JolocomSDK, NaivePasswordStore, JolocomLib } from '@jolocom/sdk'
 import { JolocomTypeormStorage } from '@jolocom/sdk-storage-typeorm'
-import { SoftwareKeyProvider } from '@jolocom/vaulted-key-provider'
 import { createConnection } from 'typeorm'
-import * as WebSocket from 'ws'
+
 
 /* ............... back-end de Armazenamento ............... */
 
 const typeOrmConfig = {
     name: 'demoDb',
     type: 'sqlite',
-    database: './mydb.sql',
+    database: './database/apiDB.sql',
     dropSchema: false,
     entities: ['node_modules/@jolocom/sdk-storage-typeorm/js/src/entities/*.js'],
     synchronize: true,
@@ -33,15 +36,29 @@ const typeOrmConfig = {
     storage: new JolocomTypeormStorage(connection),
   })
 
-/* ............... instanciando SDK ............... */
 
-sdk.transports.ws.configure({ WebSocket })
+/* ............... Websocket ............... */
 
-/* ............... Inicializando agentes ............... */
+const wss = new WebSocketServer({server})
+
+wss.on('connection', async function connection(ws, req) {
+    
+    console.log('Um novo Cliente foi conectado!')
+
+    const tokenJSON = await fetch(`${URL_BASE}/authenticate`).then(res => res.text()).then(res => JSON.parse(res))
+
+    ws.identifier = tokenJSON.identifier
+
+    const response = {messageType: "credentialRequirements", payload: tokenJSON}
+
+    ws.send(JSON.stringify(response))
+
+})
+
+
+/* ............... AGENTES ............... */
 
 console.log("\nCriando/Carregando Agentes...")
-
-// -----------> API
 
 const passwordAPI = 'secretpasswordAPI'
 
@@ -52,6 +69,7 @@ const passwordAPI = 'secretpasswordAPI'
 const API = await sdk.loadAgent(passwordAPI, "did:jolo:762e41643998bca0d9df37eef96a9404f308d751bb352ddce7b600c18f75b65c")
 
 console.log(`Agente Criado/Carregado (API): ${API.identityWallet.did}`)
+
 
 /* ............... Metadados de credenciais ............... */
 
@@ -75,7 +93,10 @@ const StudentCredentialUNICAMPMetadata = {
 
 import { claimsMetadata } from '@jolocom/protocol-ts'
 
-/* ............... Configurando as requisições HTTP ............... */
+
+/* .............................. Configurando as requisições HTTP .............................. */
+
+//app.use('/config.js', express.static(path.resolve('./config.js')));
 
 app.use(function(req, res, next){
     var data = "";
@@ -84,11 +105,11 @@ app.use(function(req, res, next){
        req.rawBody = data;
        next();
     })
-        // Website you wish to allow to connect
+    // Website you wish to allow to connect
     res.setHeader('Access-Control-Allow-Origin', '*');
 
     // Request methods you wish to allow
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST'); //, OPTIONS, PUT, PATCH, DELETE
 
     // Request headers you wish to allow
     res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type');
@@ -96,12 +117,12 @@ app.use(function(req, res, next){
     // Set to true if you need the website to include cookies in the requests sent
     // to the API (e.g. in case you use sessions)
     res.setHeader('Access-Control-Allow-Credentials', true);
+
     
  })
 
 
-
-// ----------> Fluxo de VERIFICAÇÃO de credencial
+/* ............... Requisições refente ao fluxo de VERIFICAÇÃO (ProofOfEmailCredential) ............... */
 
 //get em /authenticate gerará uma solicitaçao de credencial do tipo 'ProofOfEmailCredential'
 app.get('/authenticate', async function (req, res, next) {
@@ -142,11 +163,12 @@ app.post('/authenticate', async function (req, res, next) {
         const signatureValidationResults = await JolocomLib.util.validateDigestables(providedCredentials)
         if (!signatureValidationResults.includes(false)) {
             console.log("SUCESSO! a credencial fornecida pelo client é válida!")
-            cache[interaction.payload.jti].authenticated = true
-            cache[interaction.payload.jti].expiryTime = Date.now() + 30000
-            cache[interaction.payload.jti].claim = providedCredentials[0].claim
-            //cache[interaction.payload.jti].claims = providedCredentials
             res.send("SUCESSO! a credencial fornecida é válida!")
+            wss.clients.forEach(function each(client) {
+                if (client.identifier == interaction.payload.jti & client.readyState === WebSocket.OPEN) {
+                    client.send(JSON.stringify({messageType: "credentialValid", payload: providedCredentials[0].claim}))
+                }
+            })
             //res.send(!signatureValidationResults.includes(false))
         }
 
@@ -162,7 +184,7 @@ app.post('/authenticate', async function (req, res, next) {
 
 })
 
-// ----------> Fluxo de EMISSÃO de credencial ProofOfEmailCredential
+/* ............... Requisições refente ao fluxo de EMISSÃO (ProofOfEmailCredential) ............... */
 
 //get em /receive/ProofOfEmailCredential gerará uma oferta de credencial do tipo ProofOfEmailCredential
 app.get('/receive/ProofOfEmailCredential', async function (req, res, next) {
@@ -313,111 +335,18 @@ app.post('/receive/StudentCredentialUNICAMP', async function (req, res, next) {
 })
 */
 
-// ----------> Fluxo de Auntenticação
 
-const cache = {}
+/* ............... Front-End para o Fluxo de VERIFICAÇÃO ............... */
 
-app.get('/', async (req, res) => {
-  try {
-    const ip = req.ip == "::1" ? "127.0.0.1":req.ip.split(':')[3] || req.connection.remoteAddress.split(':')[3]
-
-    let alreadyAuthenticated = false
-    let IDalreadyAuthenticated = "null"
-
-    Object.keys(cache).forEach(key => {
-        if (cache[key].ip == ip && cache[key].authenticated == true) {
-            alreadyAuthenticated = true
-            IDalreadyAuthenticated = key
-        }
-    })
-
-    if (alreadyAuthenticated == true) {
-        res.redirect("/" + IDalreadyAuthenticated) 
-        alreadyAuthenticated = false
-        IDalreadyAuthenticated = "null"
-    } else {
-
-        const response = await fetch(`${URL_BASE}/authenticate`).then(res => res.text()).then(res => JSON.parse(res))
-
-        const token = response.token
-        const identifier = response.identifier
-    
-        cache[identifier] = {ip: ip, authenticated: false, token: token, expiryToken: Date.now() + 120000}
-        res.redirect("/" + identifier) 
-    }
-
-  } catch (error) {
-    res.send(error)
-  }
-})
-
-app.get('/:id', (req, res) => {
-  
-  try {
-    const ip = req.ip == "::1" ? "127.0.0.1":req.ip.split(':')[3] || req.connection.remoteAddress.split(':')[3]
-    
-    if (cache[req.params.id] == undefined) {
-      res.redirect('/')
-    } else {
-
-        if (cache[req.params.id].authenticated === true) {
-
-            if (cache[req.params.id].ip === ip) {
-                //res.sendFile('index.html', {root: __dirname })
-                res.send('Usuário Autenticado!')
-                
-            } else {
-                res.redirect("/")
-            }
-          
-    
-        } else { //***** qnd não é o mesmo ip mas ja foi autenticado, ele reconstroi um qrcode invalido pois ja foi processado
-          //fazer autenticação e direcionar o usuário para /:id 
-          const newURL = `${URL_BASE}/${req.params.id}`
-          res.send(`<!doctype html><head><style>* {text-align:center;}body { padding:20px;}.qr-btn { background-color:#8c52ff; padding:8px; color:white; cursor:pointer;}.token {margin-left: 30%;margin-right: 30%;word-break: break-all; overflow: scroll;}</style><title>SSI Authenticator</title></head><body><h3>Please scan the QR code with your Jolocom SmartWallet to provide your e-mail credential</h3> <br/><textarea id="token" rows="4" cols="50">${cache[req.params.id].token}</textarea><br/><br/> <canvas id="qr-code"></canvas> <br/><br/><br/><div> <button class="qr-btn" onclick=window.location="${newURL}">Continue</button> </div> <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script><script>/* JS comes here */var qr;(function() { qr = new QRious({ element: document.getElementById('qr-code'), size: 400, value: '${cache[req.params.id].token}' }); })();</script> </body></html>`) 
-          
-        }
-
-    }
-
-  } catch (error) {
-    res.send(error)
-  }
-})
-
-//a cada 20 segundos verifica expiryTime de algum usuário, e se expirou, o usuário é removido do cache e necessitará fazer um novo login 
-//também é verificado se o usuário demorou 2min para se autenticar, neste caso, o usuário é removido do cache e necessitará fazer mais uma tentativa de login 
-
-setInterval(e => {
-    Object.keys(cache).forEach(key => {
-
-        const deletar = false
-
-        if (cache[key].expiryTime < Date.now() & cache[key].authenticated == true) {
-            console.log(`\nAutenticação do usuário ${key} expirado\n`)
-            deletar = true
-        }
-
-        if (cache[key].expiryToken < Date.now() & cache[key].authenticated == false) {
-            console.log(`\nToken de autenticação do usuário ${key} expirado\n`)
-            deletar = true
-        }
-
-        if (deletar) {
-            delete cache[key]
-            deletar = false
-        }
-        console.log("\n", cache)
-    })
-},20000)
-
-
+app.get('/', function(req, res) {
+    res.sendFile(path.resolve('./public/index.html'));
+});
 
 /* ............... Iniciando Servidor ............... */
 
 console.log("\nIniciando Servidor...")
 
-app.listen(porta, () => {
+server.listen(porta, () => {
     console.log(`Servidor está executando em ${URL_BASE}`)
     console.log()
 })

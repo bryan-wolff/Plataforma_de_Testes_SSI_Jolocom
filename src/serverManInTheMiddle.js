@@ -20,7 +20,7 @@ import * as WebSocket from 'ws'
 const typeOrmConfig = {
     name: 'demoDb',
     type: 'sqlite',
-    database: './mydb.sql',
+    database: './database/mitmDB.sql',
     dropSchema: false,
     entities: ['node_modules/@jolocom/sdk-storage-typeorm/js/src/entities/*.js'],
     synchronize: true,

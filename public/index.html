@@ -1,0 +1,86 @@
+<!doctype html>
+<head>
+	<style>
+        * {text-align:center;}
+        
+        body { 
+            padding:20px;
+        }
+           
+        #token {
+            word-break: break-all; 
+            overflow: scroll;
+            resize: none;
+        }
+        
+        .msg {
+            display:none;
+        }
+        
+    </style>
+    
+    <title>SSI Authenticator</title>
+
+</head>
+
+<body>
+	<h3 id="title">Please scan the QR code with your Jolocom SmartWallet to provide your e-mail credential</h3>
+	<textarea id="token" rows="4" cols="50" readonly></textarea>
+    <br/><br/>
+    <h4 id="message1" class='msg'></h4>
+    <h4 id="message2" class='msg'></h4>
+	<canvas id="qr-code"></canvas>
+</body>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+
+<script>
+
+    var qr;
+
+    function updateQR(value) {
+        qr = new QRious({ 
+            element: document.getElementById('qr-code'), 
+            size: 350, 
+            value: value
+        })
+
+        document.getElementById('token').value = value
+    }
+
+    // Create WebSocket connection.
+    const socket = new WebSocket(`ws://wolff.gleeze.com:7777`);
+
+    // Connection opened
+    socket.addEventListener('open', function (event) {
+        console.log('connected to WS server')
+    });
+
+    // Listen for messages
+    socket.addEventListener('message', function (event) {
+
+        const response = JSON.parse(event.data)
+
+        if (response.messageType == "credentialRequirements") {
+            console.log("message received from server: Credential Required")
+            updateQR(response.payload.token)
+        }
+        
+        else if (response.messageType == "credentialValid") {
+            console.log("message received from server: Credential Valid")
+            document.getElementById('token').style.display = 'none'
+            document.getElementById('qr-code').style.display = 'none'
+            document.getElementById('title').innerText = `Successful Authentication!`
+            document.getElementById('message1').innerText = `Welcome ${response.payload.email}`
+            document.getElementById('message2').innerText = `${response.payload.id}`
+            document.getElementById('message1').style.display = 'block'
+            document.getElementById('message2').style.display = 'block'
+
+        }
+
+    });
+
+</script> 
+
+
+</html>
