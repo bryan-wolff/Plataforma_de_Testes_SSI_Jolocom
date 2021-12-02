@@ -56,7 +56,5 @@ Para acessar a interface de **autenticação**, acesse pelo navegador (Requisiç
 
 * [**Bryan Wolff**](https://github.com/bryan-wolff)
 
----
-
 ## Mais Informações:
 * [**PGID 2021**](https://wiki.rnp.br/display/comitetgi/PGId+2021)
