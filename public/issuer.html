@@ -79,6 +79,10 @@
 
 <script>
 
+    var porta = 7777
+
+    var URL_BASE = `http://wolff.gleeze.com:${porta}`
+
     var qr;
 
     function updateQR(value) {
@@ -92,7 +96,7 @@
     }
 
     // Criando uma conexão WebSocket.
-    const socket = new WebSocket(`ws://wolff.gleeze.com:7777`);
+    const socket = new WebSocket('ws://'+ URL_BASE.split('//')[1]);
 
     // Ao conectar no servidor WS
     socket.addEventListener('open', function (event) {

@@ -89,6 +89,8 @@ const API = await sdk.loadAgent(passwordAPI, "did:jolo:762e41643998bca0d9df37eef
 
 console.log(`Agente Criado/Carregado (API): ${API.identityWallet.did}`)
 
+//criar um perfil com informações publicas: https://jolocom-lib.readthedocs.io/en/latest/publicProfile.html
+
 
 /* .............................. Configurando as requisições HTTP .............................. */
 
@@ -188,6 +190,23 @@ app.get('/receive/ProofOfEmailCredential', async function (req, res, next) {
             offeredCredentials: [
               {
                 type: 'ProofOfEmailCredential',
+                renderInfo: {
+                    renderAs: "document",
+                },
+                credential: {
+                    name: "Email Address",
+                    display: {
+                      properties: [
+                        {
+                          path: [ 
+                            "$.email" //contem o nome referente a key da claim
+                          ],
+                          label: "Email", 
+                          //value: "your email"
+                        },
+                      ]
+                    }
+                },
               },
             ],
         })
@@ -262,7 +281,7 @@ app.post('/receive/ProofOfEmailCredential', async function (req, res, next) {
 
 /* ............... Front-End para o Fluxo de VERIFICAÇÃO ............... */
 
-app.get('/', function(req, res) {
+app.get('/login', function(req, res) {
     res.sendFile(path.resolve('./public/index.html'));
 });
 
