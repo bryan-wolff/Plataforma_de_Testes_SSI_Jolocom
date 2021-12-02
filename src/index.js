@@ -282,7 +282,7 @@ app.post('/receive/ProofOfEmailCredential', async function (req, res, next) {
 /* ............... Front-End para o Fluxo de VERIFICAÇÃO ............... */
 
 app.get('/login', function(req, res) {
-    res.sendFile(path.resolve('./public/index.html'));
+    res.sendFile(path.resolve('./public/login.html'));
 });
 
 /* ............... Front-End para o Fluxo de EMISSÃO ............... */
