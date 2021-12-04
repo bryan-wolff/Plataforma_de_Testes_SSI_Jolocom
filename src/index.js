@@ -18,6 +18,7 @@ import { JolocomSDK, NaivePasswordStore, JolocomLib } from '@jolocom/sdk'
 import { JolocomTypeormStorage } from '@jolocom/sdk-storage-typeorm'
 import { createConnection } from 'typeorm'
 import { claimsMetadata } from '@jolocom/protocol-ts'
+import { SoftwareKeyProvider } from "@jolocom/vaulted-key-provider";
 
 
 /* ............... back-end de Armazenamento ............... */
@@ -90,7 +91,6 @@ const API = await sdk.loadAgent(passwordAPI, "did:jolo:762e41643998bca0d9df37eef
 console.log(`Agente Criado/Carregado (API): ${API.identityWallet.did}`)
 
 //criar um perfil com informações publicas: https://jolocom-lib.readthedocs.io/en/latest/publicProfile.html
-
 
 /* .............................. Configurando as requisições HTTP .............................. */
 
